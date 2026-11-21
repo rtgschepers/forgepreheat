@@ -59,6 +59,13 @@ public final class DeferredRecipeIndex {
         }
     }
 
+    /** Called before an addRecipe that reaches the map directly, after the start; keeps the original order. */
+    public void buildBeforeDirectAdd() {
+        if (!built) {
+            build(false);
+        }
+    }
+
     synchronized int size() {
         return pending == null ? 0 : pending.size();
     }

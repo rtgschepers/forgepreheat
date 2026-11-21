@@ -63,6 +63,9 @@ public abstract class RecipeMapMixin {
                 ci.cancel();
                 return;
             }
+            if (existing != null) {
+                existing.buildBeforeDirectAdd(); // A late add must not race the background replay.
+            }
         }
         forgepreheat$start = System.nanoTime();
     }

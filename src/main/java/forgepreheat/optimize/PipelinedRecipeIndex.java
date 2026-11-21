@@ -92,11 +92,12 @@ public final class PipelinedRecipeIndex {
         while (true) {
             Pending next;
             synchronized (this) {
+                // Leaving with entries still queued would make every awaitDrained() wait forever, so only "closed" ends it.
                 while (queue.isEmpty() && !closed) {
                     try {
                         wait();
                     } catch (InterruptedException e) {
-                        return;
+                        // Nothing here may be cut short; keep waiting.
                     }
                 }
                 if (queue.isEmpty()) {
@@ -108,10 +109,14 @@ public final class PipelinedRecipeIndex {
             long start = System.nanoTime();
             try {
                 map.addRecipe((RecipeType) next.type(), next.recipe(), next.supplier());
-            } catch (RuntimeException | LinkageError e) {
-                // JEI would have dropped this recipe from its category too; the count says how often it happens.
-                if (failures++ < MAX_LOGGED_FAILURES) {
-                    LOGGER.warn("[ForgePreheat] {} recipe index entry failed for {}", role, next.type().getUid(), e);
+            } catch (Throwable t) {
+                // JEI drops such a recipe from its category, here it stays listed; the count shows whether that happens.
+                int failure;
+                synchronized (this) {
+                    failure = failures++;
+                }
+                if (failure < MAX_LOGGED_FAILURES) {
+                    LOGGER.warn("[ForgePreheat] {} recipe index entry failed for {}", role, next.type().getUid(), t);
                 }
             } finally {
                 synchronized (this) {
