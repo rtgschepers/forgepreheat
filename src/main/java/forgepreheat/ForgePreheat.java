@@ -1,5 +1,6 @@
 package forgepreheat;
 
+import forgepreheat.profile.HitchSampler;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -12,6 +13,7 @@ public final class ForgePreheat {
         // Client-only mod; on a server it loads but does nothing.
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientStartSession.begin();
+            HitchSampler.install();
         }
     }
 }
