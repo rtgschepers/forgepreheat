@@ -48,6 +48,10 @@ final class MainThreadBridge {
         await(first);
     }
 
+    boolean isHolding() {
+        return holding;
+    }
+
     void release() {
         if (holding) {
             holding = false;

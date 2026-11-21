@@ -18,6 +18,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -30,6 +32,8 @@ import java.util.stream.Collectors;
  * The worker starts only once the server's tags have arrived (they follow the recipes that trigger JEI), so it never
  * reads tags while the main thread rebinds them. A synchronous JEI start always runs before those tags, so its fuel
  * list misses the tag-based fuels (logs, planks, ...): ~1,050 fuel stacks instead of ~4,070 in this pack.
+ * Plugins that wait with Minecraft.managedBlock (Just Enough Resources loading loot tables) would make the worker run
+ * the main thread's task queue; the worker waits without draining it instead, and the main thread runs those tasks.
  * On by default since 0.8.0 (the user's call after testing); switch off with -Dforgepreheat.asyncStart=false. Every
  * plugin's registration code runs off the main thread, and the fuel list differs from a normal JEI start as described.
  */
@@ -50,6 +54,7 @@ public final class AsyncJeiStart extends ScopedFeature {
     private volatile MainThreadBridge bridge;
     private long workerStartedAt;
     private int pluginStepsOnMain;
+    private int managedWaits;
     // Main thread only: a start request parked until the server's tags arrive.
     private JeiStarter waitingForTags;
     private long tagWaitStartedAt;
@@ -77,6 +82,7 @@ public final class AsyncJeiStart extends ScopedFeature {
     protected void onBegin() {
         workerStartedAt = System.nanoTime();
         pluginStepsOnMain = 0;
+        managedWaits = 0;
     }
 
     /**
@@ -170,6 +176,27 @@ public final class AsyncJeiStart extends ScopedFeature {
         };
     }
 
+    /**
+     * Called at the head of BlockableEventLoop.managedBlock, on any thread. Returns true when the wait was done here and
+     * the caller must return: on the worker, managedBlock would otherwise run the main thread's queued tasks itself.
+     */
+    public boolean waitWithoutDraining(Object loop, BooleanSupplier done) {
+        if (!onWorker() || loop != Minecraft.getInstance()) {
+            return false;
+        }
+        managedWaits++;
+        MainThreadBridge current = bridge;
+        if (current != null && current.isHolding()) {
+            // The main thread is held by this start and can't drain its queue, so the wait has to run there.
+            current.run(() -> Minecraft.getInstance().managedBlock(done));
+        } else {
+            while (!done.getAsBoolean()) {
+                LockSupport.parkNanos(1_000_000L);
+            }
+        }
+        return true;
+    }
+
     /** Called when JeiStarter.start returns on the worker, before the report is written. */
     public void onStartReturned() {
         MainThreadBridge current = bridge;
@@ -217,8 +244,8 @@ public final class AsyncJeiStart extends ScopedFeature {
             return "ran on the main thread";
         }
         return String.format("ran on a worker thread for %.2f s, started %s after %.2f s; main thread used %.2f s for "
-                        + "%d tasks (%d plugin steps from %s)", (System.nanoTime() - workerStartedAt) / 1e9,
-                lastStartReason, lastTagWaitSeconds, current.mainThreadSeconds(), current.tasks(), pluginStepsOnMain,
-                mainThreadPlugins);
+                        + "%d tasks (%d plugin steps from %s); %d managedBlock waits kept off the main queue",
+                (System.nanoTime() - workerStartedAt) / 1e9, lastStartReason, lastTagWaitSeconds,
+                current.mainThreadSeconds(), current.tasks(), pluginStepsOnMain, mainThreadPlugins, managedWaits);
     }
 }

@@ -11,6 +11,10 @@ joining, with a ~2 s hitch when its GUI is built on the main thread.
 The mod outgrows its name: the goal is **faster loading for any Forge 1.20.1 pack**, covering both joining a world
 (JEI start) and, later, client startup to the main menu. ATM9 Expert stays the test pack, not the target.
 
+**Goal (user, 2026-11-21): get the game ready in a complete state as fast as possible.** "Ready" includes JEI being
+fully loaded, not just the player being in the world. Moving work to the background is not the end state: **speeding
+up JEI's indexing is a requirement**, to be done after the client-startup work.
+
 - **Name: ForgePreheat** (mod id and package `forgepreheat`), chosen by the user: you preheat a forge, and the mod
   targets Forge mods. Renamed from JEI Join Profiler in 0.4.2, before `git init`. The Gradle project name is pinned in
   `settings.gradle`, so the folder name doesn't leak into the manifest. Still open: check CurseForge/Modrinth for a
@@ -27,9 +31,8 @@ The mod outgrows its name: the goal is **faster loading for any Forge 1.20.1 pac
   instead of crashing. Other mods may mixin into the same JEI methods; watch for conflicts.
 - **Versions**: stay on Forge 1.20.1 (NeoForge 1.20.1 is close). Multi-version builds only once people outside the
   pack use the mod.
-- **Client startup (later)**: the pack already ships ModernFix, FerriteCore and Fastload, and ModernFix covers much of
-  the usual ground (dynamic resources, model loading). Start with a JFR capture of the 93 s to the main menu and only
-  target what those mods leave, so we neither duplicate nor fight them.
+- **Client startup: closed (user, 2026-11-21).** A and B (0.9.0, ~4 s) stay; no further startup work, since what is
+  left is per-mod, pre-mod (jar scan) or machine-level (antivirus, Java, launcher). Next: JEI indexing.
 
 ## Environment
 
@@ -66,12 +69,16 @@ export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.21.10002-hotspot"
 
 ```
 forgepreheat/
-  ForgePreheat             @Mod entry; does nothing else
-  JeiStartSession          composition root: the only class that lists all features; begin/end per JEI start
+  ForgePreheat             @Mod entry; on the client starts ClientStartSession
+  JeiStartSession          composition root for JEI's start: lists those features; begin/end per JEI start
+  ClientStartSession       composition root for client startup: begin in the mod constructor, end on the first
+                           TitleScreen (logs "[ForgePreheat] Client start reached the title screen N s after launch")
   core/
     Feature                interface: begin(), end(), summary()
-    ScopedFeature          base class: toggle + startup-thread scope + summary format, written once
-    StartupScope           active only on JEI's start thread between begin and end
+    ToggledFeature         shared base: name, -D toggle, summary format
+    ScopedFeature          ToggledFeature active only on the thread owning JEI's start (StartupScope)
+    PhaseFeature           ToggledFeature active for a whole phase on any thread (client startup)
+    StartupScope           global owner thread of JEI's start; moves with MainThreadBridge hops
     FeatureToggle          -Dforgepreheat.<key>=true|false
     ListSnapshot           element-identity snapshot guarding identity-keyed caches
   optimize/                one class per speedup, each a ScopedFeature singleton (INSTANCE)
@@ -83,7 +90,8 @@ forgepreheat/
                            on the main thread; waits for the server's tags; parks stops behind the running start
   profile/                 RecipeTimings (collect, with setup/index split), RecipeInspector (names, NBT details),
                            ProfileReport (write), RecipeStat, StepTimings (named steps/laps inside plugins),
-                           RecipeIdDump (sorted recipe ids per category, -Dforgepreheat.dumpCategories)
+                           RecipeIdDump (sorted recipe ids per category, -Dforgepreheat.dumpCategories),
+                           StepClock (shared step timer), StartupTimings (client-start steps, thread-safe)
   mixin/                   required mixins (JEI targets only since 0.8.0)
   mixin/compat/            optional mixins for other mods (Create, KubeJS, GTCEu timings), @Pseudo, non-required config
 tools/jfr/                 Python scripts for analysing JFR samples (see Profiling)
@@ -160,6 +168,8 @@ Design that holds up:
 - Detection: JEI's `PluginCaller` catches `RuntimeException`/`LinkageError` per plugin and logs
   `Caught an error from mod plugin` (baseline: 0 in the 0.6.1 log). Compare that count and the per-category recipe
   counts in the report between a sync and an async run.
+- Found in use: plugins waiting with `Minecraft.managedBlock` from the worker drain the main thread's task queue on the
+  worker (JER loot tables). Handled since 0.8.1. Watch the log for `Error executing task on Client` from the worker.
 - Known hazards: font glyph-info caches (widgets measuring text), creative-tab rebuild races (main thread rebuilds when
   a creative inventory opens), plugins asserting the render thread (show up as caught plugin errors), mods reading
   player/level state. Opt-in only.
@@ -173,6 +183,45 @@ thermal:disenchantment_fuel 149 -> 297), anvil +186 (not itemised), grindstone -
 jeresources:enchantment +1; `elementalcraft:purification` exists only in async (ElementalCraft builds it on TagsUpdated,
 which a sync JEI start always precedes). So a normal JEI start in this pack shows incomplete fuel data and no
 purification recipes.
+
+## Client startup findings (2026-11-21)
+
+Launch to title: 84-93 s on earlier days, 70-79 s on 2026-11-21. Breakdown of the 70.7 s launch at 16:10 from log
+timestamps (complete by construction), with what JFR (`jei-join.jfr`, 13:13 launch, 88.9 s incl. JFR overhead; copied
+to the scratchpad as `startup.jfr`) shows inside each phase:
+
+| s after start | Phase | Dur | Inside (JFR / log) | Mod can fix? |
+|---|---|---|---|---|
+| 0-11 | ModLauncher: discover/open 349 jars, early window | 11 s | main mostly native: `CreateFile0`, zip `inflate` (disk bound) | no (before mods); antivirus/disk |
+| 11-17 | module layer, mixin setup, bootstrap begins (ModernFix "bootstrap stage" at 18.2 s) | 6 s | `ModuleLayerHandler`, mixin config | no |
+| 17-25 | vanilla bootstrap, window + GL init, Iris/Oculus loads the shader pack | 8 s | `org.anarres.cpp` preprocessing, GL | shaders are a user setting |
+| 25-36 | mod construction on modloading workers, main waits | 11 s | IE, Mekanism, Create, KubeJS, Supplementaries, ... | per mod only |
+| 36-46 | registry events on main | 10 s | `ObjectHolderRegistry.applyObjectHolders` runs every holder once per registry (`GameData.postRegisterEvents` passes `registry::equals`); `RegistryObject.registryExists` | **B**: index holders per registry. ModernFix `object_holder_cleanup` (clears after the loop) and `forge_registry_lambda` (memory) don't. Forge core, high care |
+| 46-62 | resource reload on workers (models/textures; `ModelEvent.ModifyBakingResult` 3.7 s: framedblocks 1.5 s, modernfix 0.5, immersiveconvergence 0.4, ...); main-thread deferred tasks: gtceu 1.5 s, sophisticatedbackpackscreateintegration 2.9 s | 16 s | reload workers busy, main mostly waiting | per mod; the 2.9 s deferred task is worth a look |
+| 62-71 | sound engine, atlas upload, shader compile (vanilla/mod core shaders + Iris pack), Registrate cleanup, title | 9 s | `ListenerList.unregister` (Registrate), `antlr`/glsl_transformer | **A**: skip Registrate's cleanup (~4 s, see below) |
+
+A: Registrate `OneTimeEventReceiver.onLoadComplete` (Registrate 1.3.11 from GTCEu's jar-in-jar) unregisters every
+consumed one-time listener; Forge's `EventBus.unregister` -> `ListenerList.unregisterAll` scans every event type's
+listener list per listener. The receivers are inert after firing (`consumed` AtomicBoolean), so skipping the cleanup
+changes no behavior, only keeps them in memory.
+
+## Related mods (checked 2026-11-21, author claims only)
+
+- **JEIOptimizer** (Modrinth `jeioptimizer`): parallel build of JEI's `IngredientFilter` suffix trees (default
+  `PARALLEL_FULL`), experimental `filter.async` (background build), experimental parallel plugin registration (author:
+  Theurgy, Ars Nouveau, Compact Machines crash) and parallel creative tabs (author: lost 22% of items). Suggests
+  `tooltipSearchMode = DISABLED` in `jei-client.ini` (~8 s). Page metadata lists Forge 1.20.1 but its description only
+  NeoForge 1.21.1: unconfirmed. Overlaps `BackgroundSearchIndex` (both touch `IngredientFilter`): don't combine.
+- **LightSpeedRe** (`lightspeed-1.20.1-2.0.5+hotfix.jar`): resource-pack index preload/cache, dedicated reload executor,
+  indexed resource lookup, plus registry patches overlapping our B (`ObjectHolderRegistryMixin` cancels
+  `applyObjectHolders` at HEAD and routes per registry; `GameDataMixin` wraps RegisterEvent posting and holder
+  application with MixinExtras `WrapOperation`, so MixinExtras is available in this pack). Optional bootstrap Java agent
+  (`installBootstrapAgent`, off by default) could reach the pre-mod phase. Tested 2026-11-21 with both ForgePreheat
+  startup features off (JVM args left from the A/B test): title 77.3 s (first launch, builds `lightspeed-cache`) and
+  72.2 s (second) vs 71.7 s without it: no measurable gain here. With both mods, its HEAD cancel means our object
+  holder index never runs (no conflict, no double work). Agent not tested.
+- FastBoot: Modrinth page gone. DashLoader: content cache (other loader). EMI: JEI alternative, reloads in the background
+  by design (EMI Accelerator adds caching): a pack-level change, not ours.
 
 ## Version history
 
@@ -196,6 +245,8 @@ purification recipes.
 | 0.7.3 | Profiling: `RecipeIdDump` writes `logs/forgepreheat-ids-<timestamp>.txt` with the sorted recipe ids (`IRecipeCategory.getRegistryName`, "(rejected)" when `addRecipe` returned false) of the categories in `-Dforgepreheat.dumpCategories=<uid>,...` | run 2026-11-21: sync `logs/forgepreheat-ids-20261121-160020.txt` vs async `logs/forgepreheat-ids-20261121-160452.txt`. Grindstone: the only difference is 51 `grindstone.self_repair.item.tconstruct.dagger` recipes (one per material variant) present in sync, absent in async; all other 143,828 ids identical. Tinkers' `ModifiableItem.isRepairable` returns false, so with the server's tags the dagger gets no grindstone repair: async likely correct. Anvil: JEI anvil recipes have no registry name (dump shows the class), so the +186 can't be itemised without dumping inputs/outputs |
 | 0.7.4 | Profiling: report tables gain "setup s" (`IngredientSupplierHelper.getIngredientSupplier`, i.e. the category's setRecipe building ingredient lists) and "index s" (`RecipeMap.addRecipe` per role) per category. Reason: async furnace addRecipe is ~13 s vs 2.6 s sync with a ~4,070-stack fuel list; the cache's own list copy is only ~35M reference copies, so the cost must be in JEI | run 2026-11-21 (async, `logs/forgepreheat-jei-20261121-161259.txt`, JEI start 84.7 s, addRecipe 43.8 s): furnace total 10.40 = setup 0.26 + index 10.13 s; blasting 8.96 = 0.20 + 8.76; all listed categories setup 11.6 s, index 29.4 s. JEI's `RecipeMap.addRecipe` per ingredient: `getIngredientUid` (cheap base-item path unless the item has subtypes), a per-recipe `IngredientUidIndex` dedupe, then global `ingredientUidToCategoryMap` + `recipeTable.addExact`. With ~4,070 fuels x ~7,900 cooking recipes that is ~35M real (fuel, recipe) entries JEI keeps for R/U lookups; cutting it would mean replacing JEI's index structure (not worth it). Background-only cost |
 | 0.8.0 | Defaults: `asyncStart` and `asyncSearch` on (user's decision after testing; behavior differs from plain JEI only by the tag-based fuel data, see the comparison above). Background search index build is cancelled when JEI stops (`PrefixInfoMixin` on `PrefixInfo.getStrings`), so quitting early no longer floods the log with tooltip errors. Removed `FakeMenuSyncSkip` + `AbstractContainerMenuMixin` (broke grindstone, ~0.5 s) and `GrindstoneStackReuse` + `GrindstoneRecipeMakerMixin` (no gain, and its 6M-call loop timers cost time every start) | installed 2026-11-21 |
+| 0.8.1 | Fix: JER's `LootTableHelper.getLootDataManager` (in its category registration) reloads server data with Minecraft as the apply executor and waits with `Minecraft.managedBlock`, which on the JEI worker ran the main thread's task queue there (0.8.0 log: 12,088 `Error executing task on Client: RunningOnDifferentThreadException` from bounced packets in 3 s; other queued tasks may have run off-thread too). `BlockableEventLoopMixin` (Minecraft target, refmap `m_18701_`) makes the worker wait without draining; if the main thread is held by the start, the wait runs there | installed 2026-11-21, not yet tested |
+| 0.9.0 | Client startup: `ClientStartSession`, `PhaseFeature`, `StartupTimings`. A: `RegistrateCleanupSkip` (compat redirect of the `toUnregister.forEach` in `OneTimeEventReceiver.lambda$onLoadComplete$1`; off: times the original). B: `ObjectHolderIndex` (redirect of `objectHolders.forEach` in `ObjectHolderRegistry.applyObjectHolders`, Forge's own per-holder lambda runs only the holders that need it; `RegistryObject$1` state read via VarHandles in `RegistryObjectHolders`; verify with `-Dforgepreheat.objectHolderVerify=true`; off: times Forge's loop). Mixin AP 0.8.5 crashes (`SignaturePrinter` StringIndexOutOfBounds) on some @Shadow/@Accessor combinations of bytecode-only targets, hence redirects and VarHandles | tested 2026-11-21 (3 launches): verify run 0 mismatches over 140 passes. Index: 140 passes all indexed, 8 rebuilds, 795,156 holder calls instead of ~10.7M (9,941,588 skipped), 4,662 holders always run (optional registries / non-RegistryObject). Timings: object holder passes 1.38 s (Forge) -> 0.40 s (index); Registrate cleanup of 31,528 listeners 2.84 s -> skipped. Title screen 71.7 s (both off) -> 67.7 s (both on). Note: the JFR guesses were ~9 s for the registry loop and ~4 s for Registrate; real 1.38 s and 2.84 s |
 
 ## Where to pick up
 
@@ -205,10 +256,10 @@ arguments may still contain `-Dforgepreheat.asyncSearch=true -Dforgepreheat.asyn
 
 Status 2026-11-21: join ~140 s -> < 15 s (JEI ready ~1.5 min later in the background). The user plays with 0.8.0 and
 reports problems. Open topics, the user picks:
-1. **Speed up JEI's indexing** (background): addRecipe ~44 s async, of which index ~29 s (furnace + blasting ~19 s from
+1. **Speed up JEI's indexing** (required, see Goal; after client startup): addRecipe ~44 s async, of which index ~29 s (furnace + blasting ~19 s from
    ~35M fuel x cooking-recipe entries) and setup ~12 s. JEI keeps every entry for R/U; anything beyond micro-gains means
    changing JEI's index structure.
-2. **Client startup** to the main menu (~70 s now, 93 s originally): `jei-join.jfr` (23 MB, written 13:16 on
+2. **Client startup** (in progress since 2026-11-21) to the main menu (~70 s now, 93 s originally): `jei-join.jfr` (23 MB, written 13:16 on
    2026-11-21 in the instance folder) is a startup-only capture with JFR overhead. ModernFix, FerriteCore and Fastload
    are in the pack; only target what they leave.
 3. Smaller: `IngredientListCache` stores ~43,000 large lists seen once (store on second sighting); GTCEu per-recipe
@@ -224,6 +275,10 @@ reports problems. Open topics, the user picks:
    be a few seconds off from the game log, and sample counts are not proportional to time: take durations from the
    log's JEI timings, causes from the samples.
 5. Remove the JFR argument afterwards; it writes ~45 MB per launch.
+6. JFR execution sampling is throttled across threads: with 100+ threads the main thread got ~10 samples/s, not 100.
+   Sample counts can't be turned into durations; use log timestamps or our own timers for durations and JFR only for
+   "what runs in this window". `tools/jfr/startup.py` (per-window busy threads and owning mod) and
+   `tools/jfr/threadstate.py` (one thread's Java/native/park/sleep/GC per window) help with that.
 
 Inspecting other mods' code: extract the jar into its own temp folder and use `javap -c -l -p -cp <dir> <class>`
 (line numbers map JFR frames to bytecode).

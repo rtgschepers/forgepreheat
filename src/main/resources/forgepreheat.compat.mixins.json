@@ -12,7 +12,8 @@
     "GTCEuRecipeTypeTimingMixin",
     "GTCEuRecipeTypeUITimingMixin",
     "GTCEuRecipeWidgetTimingMixin",
-    "KubeJSHideEventMixin"
+    "KubeJSHideEventMixin",
+    "RegistrateOneTimeEventReceiverMixin"
   ],
   "injectors": {
     "defaultRequire": 0
