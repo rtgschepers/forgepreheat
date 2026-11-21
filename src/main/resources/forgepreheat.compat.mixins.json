@@ -6,6 +6,8 @@
   "refmap": "forgepreheat.refmap.json",
   "client": [
     "CreateCategoryBuilderMixin",
+    "ElementalCraftPureOreInjectorMixin",
+    "ElementalCraftPureOreManagerMixin",
     "GTCEuMultiblockCategoryTimingMixin",
     "GTCEuPatternPreviewTimingMixin",
     "GTCEuRecipeCategoryTimingMixin",
@@ -13,7 +15,8 @@
     "GTCEuRecipeTypeUITimingMixin",
     "GTCEuRecipeWidgetTimingMixin",
     "KubeJSHideEventMixin",
-    "RegistrateOneTimeEventReceiverMixin"
+    "RegistrateOneTimeEventReceiverMixin",
+    "UtilitiXCreativeTabMixin"
   ],
   "injectors": {
     "defaultRequire": 0
