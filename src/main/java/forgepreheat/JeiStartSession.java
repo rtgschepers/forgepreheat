@@ -9,11 +9,13 @@ import forgepreheat.optimize.FilterUpdateBatching;
 import forgepreheat.optimize.IngredientListCache;
 import forgepreheat.optimize.KubeJSHideLists;
 import forgepreheat.optimize.LazyRenderOnlyIndex;
+import forgepreheat.optimize.ParallelRecipeIndex;
 import forgepreheat.optimize.ParallelVanillaMakers;
 import forgepreheat.profile.ProfileReport;
 import forgepreheat.profile.RecipeIdDump;
 import forgepreheat.profile.RecipeTimings;
 import forgepreheat.profile.StepTimings;
+import forgepreheat.ui.JeiStartProgress;
 
 import java.util.List;
 
@@ -28,6 +30,7 @@ public final class JeiStartSession {
             CreateExclusionIndex.INSTANCE,
             KubeJSHideLists.INSTANCE,
             ParallelVanillaMakers.INSTANCE,
+            ParallelRecipeIndex.INSTANCE,
             LazyRenderOnlyIndex.INSTANCE,
             BackgroundSearchIndex.INSTANCE,
             FilterUpdateBatching.INSTANCE,
@@ -38,6 +41,7 @@ public final class JeiStartSession {
     public static void begin() {
         StartupScope.setOwner(Thread.currentThread());
         FEATURES.forEach(Feature::begin);
+        JeiStartProgress.INSTANCE.onBegin();
     }
 
     public static void end() {
@@ -47,6 +51,7 @@ public final class JeiStartSession {
             ProfileReport.write(RecipeTimings.INSTANCE, summaries);
         }
         FEATURES.forEach(Feature::end);
+        JeiStartProgress.INSTANCE.onEnd(!AsyncJeiStart.INSTANCE.isCancelled());
         StartupScope.setOwner(null);
     }
 }

@@ -56,7 +56,7 @@ public final class AsyncJeiStart extends ScopedFeature {
     private int pluginStepsOnMain;
     private int managedWaits;
     // Main thread only: a start request parked until the server's tags arrive.
-    private JeiStarter waitingForTags;
+    private volatile JeiStarter waitingForTags;
     private long tagWaitStartedAt;
     private volatile double lastTagWaitSeconds;
     private volatile String lastStartReason = "";
@@ -124,6 +124,19 @@ public final class AsyncJeiStart extends ScopedFeature {
         lastStartReason = reason;
         pendingStarts.incrementAndGet();
         worker.execute(() -> startOnWorker(starter));
+    }
+
+    /** True from the moment JEI's start was handed off until it returned (waiting for tags included). */
+    public boolean isLoading() {
+        return waitingForTags != null || pendingStarts.get() > 0;
+    }
+
+    public boolean isWaitingForTags() {
+        return waitingForTags != null;
+    }
+
+    public boolean isCancelled() {
+        return cancelled;
     }
 
     /** Called at the head of JeiStarter.stop. Returns true when the stop was queued behind a running start. */

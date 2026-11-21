@@ -2,6 +2,8 @@ package forgepreheat.mixin;
 
 import forgepreheat.optimize.DeferredRecipeIndex;
 import forgepreheat.optimize.LazyRenderOnlyIndex;
+import forgepreheat.optimize.ParallelRecipeIndex;
+import forgepreheat.optimize.PipelinedRecipeIndex;
 import forgepreheat.profile.RecipeTimings;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.recipe.RecipeType;
@@ -31,9 +33,27 @@ public abstract class RecipeMapMixin {
     @Unique
     private volatile DeferredRecipeIndex forgepreheat$deferred;
 
+    @Unique
+    private volatile PipelinedRecipeIndex forgepreheat$pipeline;
+
     @Inject(method = ADD, at = @At("HEAD"), cancellable = true)
     private void forgepreheat$before(@SuppressWarnings("rawtypes") RecipeType type, Object recipe,
                                      IIngredientSupplier supplier, CallbackInfo ci) {
+        PipelinedRecipeIndex pipeline = forgepreheat$pipeline;
+        if (pipeline != null && pipeline.isConsumer()) {
+            forgepreheat$start = System.nanoTime();
+            return;
+        }
+        PipelinedRecipeIndex queued = ParallelRecipeIndex.INSTANCE.queue((RecipeMap) (Object) this, pipeline, role,
+                type, recipe, supplier);
+        if (queued != null) {
+            forgepreheat$pipeline = queued;
+            ci.cancel();
+            return;
+        }
+        if (pipeline != null) {
+            pipeline.awaitDrained(); // A direct add after the start must not race the queue's last entries.
+        }
         DeferredRecipeIndex existing = forgepreheat$deferred;
         if (existing == null || !existing.isReplaying()) {
             DeferredRecipeIndex index = LazyRenderOnlyIndex.INSTANCE.defer((RecipeMap) (Object) this, existing, role,
@@ -55,6 +75,10 @@ public abstract class RecipeMapMixin {
 
     @Inject(method = "compact()V", at = @At("HEAD"), cancellable = true)
     private void forgepreheat$compact(CallbackInfo ci) {
+        PipelinedRecipeIndex pipeline = forgepreheat$pipeline;
+        if (pipeline != null && !pipeline.isConsumer()) {
+            pipeline.awaitDrained();
+        }
         DeferredRecipeIndex index = forgepreheat$deferred;
         if (index != null && !index.isReplaying() && index.deferCompact()) {
             ci.cancel();
@@ -78,6 +102,10 @@ public abstract class RecipeMapMixin {
 
     @Unique
     private void forgepreheat$ensureBuilt() {
+        PipelinedRecipeIndex pipeline = forgepreheat$pipeline;
+        if (pipeline != null && !pipeline.isConsumer()) {
+            pipeline.awaitDrained();
+        }
         DeferredRecipeIndex index = forgepreheat$deferred;
         if (index != null && !index.isReplaying()) {
             index.ensureBuilt();

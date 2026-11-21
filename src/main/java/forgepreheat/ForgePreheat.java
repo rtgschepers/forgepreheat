@@ -1,6 +1,7 @@
 package forgepreheat;
 
 import forgepreheat.profile.HitchSampler;
+import forgepreheat.ui.JeiLoadingNotice;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -14,6 +15,7 @@ public final class ForgePreheat {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientStartSession.begin();
             HitchSampler.install();
+            JeiLoadingNotice.install();
         }
     }
 }

@@ -1,6 +1,7 @@
 package forgepreheat.mixin;
 
 import forgepreheat.optimize.AsyncJeiStart;
+import forgepreheat.ui.JeiStartProgress;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.library.load.PluginCaller;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,6 +16,12 @@ import java.util.function.Consumer;
 @Mixin(value = PluginCaller.class, remap = false)
 public abstract class PluginCallerMixin {
     private static final String TARGET = "callOnPlugins(Ljava/lang/String;Ljava/util/List;Ljava/util/function/Consumer;)V";
+
+    @Inject(method = TARGET, at = @At("HEAD"))
+    private static void forgepreheat$phase(String title, List<IModPlugin> plugins, Consumer<IModPlugin> func,
+                                           CallbackInfo ci) {
+        JeiStartProgress.INSTANCE.onPhase(title);
+    }
 
     @Inject(method = TARGET, at = @At("HEAD"), cancellable = true)
     private static void forgepreheat$mainThreadStep(String title, List<IModPlugin> plugins, Consumer<IModPlugin> func,
