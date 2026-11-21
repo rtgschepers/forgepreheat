@@ -5,12 +5,13 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "forgepreheat.refmap.json",
   "client": [
-    "AbstractContainerMenuMixin",
-    "GrindstoneRecipeMakerMixin",
     "IngredientFilterMixin",
+    "IngredientSupplierHelperMixin",
     "JeiStarterMixin",
     "PluginCallerMixin",
+    "PrefixInfoMixin",
     "RecipeManagerInternalMixin",
+    "RecipeMapMixin",
     "TypedIngredientMixin",
     "VanillaPluginMixin"
   ],

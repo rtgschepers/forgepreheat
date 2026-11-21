@@ -1,6 +1,5 @@
 package forgepreheat.mixin;
 
-import forgepreheat.optimize.FakeMenuSyncSkip;
 import forgepreheat.profile.StepTimings;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.registration.IRecipeRegistration;
@@ -21,7 +20,6 @@ public abstract class VanillaPluginMixin {
 
     @Inject(method = "registerRecipes", at = @At("HEAD"))
     private void forgepreheat$enter(IRecipeRegistration registration, CallbackInfo ci) {
-        FakeMenuSyncSkip.INSTANCE.enterVanillaRecipes();
         StepTimings.INSTANCE.enter(TOTAL);
         StepTimings.INSTANCE.startLaps();
     }
@@ -38,6 +36,5 @@ public abstract class VanillaPluginMixin {
     private void forgepreheat$exit(IRecipeRegistration registration, CallbackInfo ci) {
         StepTimings.INSTANCE.lap("jei:minecraft > ", "after last add");
         StepTimings.INSTANCE.exit(TOTAL);
-        FakeMenuSyncSkip.INSTANCE.exitVanillaRecipes();
     }
 }

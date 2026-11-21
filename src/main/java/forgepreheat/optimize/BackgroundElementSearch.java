@@ -31,6 +31,14 @@ import java.util.concurrent.CompletionException;
 final class BackgroundElementSearch implements IElementSearch {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String THREAD_NAME = "ForgePreheat search index";
+    private static final ThreadLocal<BackgroundElementSearch> BUILDING = new ThreadLocal<>();
+
+    /** Ends a build JEI no longer needs; without it the worker keeps reading tooltips while the game shuts down. */
+    private static final class Cancelled extends RuntimeException {
+        Cancelled() {
+            super("search index build abandoned", null, false, false);
+        }
+    }
 
     private final IIngredientManager manager;
     private final CompletableFuture<ElementSearch> worker;
@@ -40,8 +48,10 @@ final class BackgroundElementSearch implements IElementSearch {
     private ElementPrefixParser parser;
     private List<IListElementInfo<?>> initial;
     private ElementSearch ready;
+    private volatile boolean cancelled;
 
-    BackgroundElementSearch(ElementPrefixParser parser, List<IListElementInfo<?>> infos, IIngredientManager manager) {
+    BackgroundElementSearch(ElementPrefixParser parser, List<IListElementInfo<?>> infos, IIngredientManager manager,
+                            Set<BackgroundElementSearch> building) {
         this.parser = parser;
         this.manager = manager;
         this.initial = List.copyOf(infos);
@@ -50,12 +60,33 @@ final class BackgroundElementSearch implements IElementSearch {
         }
         List<IListElementInfo<?>> snapshot = initial;
         long start = System.nanoTime();
+        building.add(this);
         worker = CompletableFuture.supplyAsync(() -> {
-            ElementSearch search = new ElementSearch(parser, snapshot, manager);
-            LOGGER.info("[ForgePreheat] Search index for {} ingredients built on a worker thread in {} s",
-                    snapshot.size(), String.format("%.2f", (System.nanoTime() - start) / 1e9));
-            return search;
+            BUILDING.set(this);
+            try {
+                ElementSearch search = new ElementSearch(parser, snapshot, manager);
+                LOGGER.info("[ForgePreheat] Search index for {} ingredients built on a worker thread in {} s",
+                        snapshot.size(), String.format("%.2f", (System.nanoTime() - start) / 1e9));
+                return search;
+            } catch (Cancelled e) {
+                LOGGER.info("[ForgePreheat] Search index build stopped because JEI stopped");
+                throw e;
+            } finally {
+                BUILDING.remove();
+                building.remove(this);
+            }
         }, BackgroundElementSearch::startWorker);
+    }
+
+    void cancel() {
+        cancelled = true;
+    }
+
+    static void throwIfCancelled() {
+        BackgroundElementSearch search = BUILDING.get();
+        if (search != null && search.cancelled) {
+            throw new Cancelled();
+        }
     }
 
     private static void startWorker(Runnable task) {
@@ -130,8 +161,10 @@ final class BackgroundElementSearch implements IElementSearch {
             }
             return search;
         } catch (CompletionException e) {
-            LOGGER.warn("[ForgePreheat] Background search index failed; building it on the render thread instead",
-                    e.getCause());
+            if (!(e.getCause() instanceof Cancelled)) {
+                LOGGER.warn("[ForgePreheat] Background search index failed; building it on the render thread instead",
+                        e.getCause());
+            }
             return new ElementSearch(parser, initial, manager);
         }
     }

@@ -5,11 +5,10 @@ import forgepreheat.core.StartupScope;
 import forgepreheat.optimize.AsyncJeiStart;
 import forgepreheat.optimize.BackgroundSearchIndex;
 import forgepreheat.optimize.CreateExclusionIndex;
-import forgepreheat.optimize.FakeMenuSyncSkip;
-import forgepreheat.optimize.GrindstoneStackReuse;
 import forgepreheat.optimize.IngredientListCache;
 import forgepreheat.optimize.KubeJSHideLists;
 import forgepreheat.profile.ProfileReport;
+import forgepreheat.profile.RecipeIdDump;
 import forgepreheat.profile.RecipeTimings;
 import forgepreheat.profile.StepTimings;
 
@@ -20,10 +19,9 @@ public final class JeiStartSession {
     // Order is only the order of lines in the report header.
     private static final List<Feature> FEATURES = List.of(
             RecipeTimings.INSTANCE,
+            RecipeIdDump.INSTANCE,
             StepTimings.INSTANCE,
             IngredientListCache.INSTANCE,
-            FakeMenuSyncSkip.INSTANCE,
-            GrindstoneStackReuse.INSTANCE,
             CreateExclusionIndex.INSTANCE,
             KubeJSHideLists.INSTANCE,
             BackgroundSearchIndex.INSTANCE,

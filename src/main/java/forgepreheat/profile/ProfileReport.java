@@ -62,14 +62,16 @@ public final class ProfileReport {
     private static void table(PrintWriter out, String title, Map<String, RecipeStat> rows, int limit) {
         long sum = Math.max(1, rows.values().stream().mapToLong(RecipeStat::totalNanos).sum());
         out.println("== " + title + " ==");
-        out.printf("%10s %7s %8s %9s %10s  %s%n", "total s", "share", "recipes", "avg ms", "max ms", "key (slowest recipe)");
+        out.printf("%10s %7s %8s %9s %10s %9s %9s  %s%n", "total s", "share", "recipes", "avg ms", "max ms", "setup s",
+                "index s", "key (slowest recipe)");
         rows.entrySet().stream()
                 .sorted(Map.Entry.<String, RecipeStat>comparingByValue(Comparator.comparingLong(RecipeStat::totalNanos)).reversed())
                 .limit(limit)
                 .forEach(e -> {
                     RecipeStat s = e.getValue();
-                    out.printf("%10s %6.1f%% %8d %9.3f %10.2f  %s (%s)%n", secs(s.totalNanos()), 100.0 * s.totalNanos() / sum,
-                            s.count(), s.totalNanos() / 1e6 / s.count(), s.maxNanos() / 1e6, e.getKey(), s.slowestId());
+                    out.printf("%10s %6.1f%% %8d %9.3f %10.2f %9s %9s  %s (%s)%n", secs(s.totalNanos()),
+                            100.0 * s.totalNanos() / sum, s.count(), s.totalNanos() / 1e6 / s.count(), s.maxNanos() / 1e6,
+                            secs(s.setupNanos()), secs(s.indexNanos()), e.getKey(), s.slowestId());
                 });
         out.println();
     }

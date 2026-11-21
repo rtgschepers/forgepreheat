@@ -2,6 +2,7 @@ package forgepreheat.mixin;
 
 import forgepreheat.JeiStartSession;
 import forgepreheat.optimize.AsyncJeiStart;
+import forgepreheat.optimize.BackgroundSearchIndex;
 import mezz.jei.library.startup.JeiStarter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -29,6 +30,8 @@ public abstract class JeiStarterMixin {
     private void forgepreheat$stop(CallbackInfo ci) {
         if (AsyncJeiStart.INSTANCE.deferStop((JeiStarter) (Object) this)) {
             ci.cancel();
+            return;
         }
+        BackgroundSearchIndex.INSTANCE.onJeiStopped();
     }
 }

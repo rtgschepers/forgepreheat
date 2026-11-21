@@ -10,7 +10,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 
-/** Collects how long JEI's addRecipe takes per category, per source mod and for the slowest single recipes. */
+/**
+ * Collects how long JEI's addRecipe takes per category, per source mod and for the slowest single recipes, split into
+ * building the recipe's ingredient lists (setRecipe) and indexing them, so a slow category shows which half is slow.
+ */
 public final class RecipeTimings extends ScopedFeature {
     public static final RecipeTimings INSTANCE = new RecipeTimings();
 
@@ -24,6 +27,9 @@ public final class RecipeTimings extends ScopedFeature {
     private final PriorityQueue<SlowRecipe> slowest = new PriorityQueue<>(Comparator.comparingLong(SlowRecipe::nanos));
     private long startNanos;
     private long recipes;
+    // Parts of the addRecipe call in progress; booked on that recipe in record().
+    private long pendingSetup;
+    private long pendingIndex;
 
     private RecipeTimings() {
         super("recipe profiler", "profile", true);
@@ -35,6 +41,7 @@ public final class RecipeTimings extends ScopedFeature {
         byCategoryAndSource.clear();
         slowest.clear();
         recipes = 0;
+        pendingSetup = pendingIndex = 0;
         startNanos = System.nanoTime();
     }
 
@@ -44,15 +51,31 @@ public final class RecipeTimings extends ScopedFeature {
         slowest.clear();
     }
 
+    public void addSetupNanos(long nanos) {
+        if (isActive()) {
+            pendingSetup += nanos;
+        }
+    }
+
+    public void addIndexNanos(long nanos) {
+        if (isActive()) {
+            pendingIndex += nanos;
+        }
+    }
+
     public void record(ResourceLocation categoryUid, Object recipe, long nanos) {
         if (!isActive()) {
             return;
         }
         recipes++;
+        long setup = pendingSetup;
+        long index = pendingIndex;
+        pendingSetup = pendingIndex = 0;
         String category = String.valueOf(categoryUid);
         String id = RecipeInspector.recipeId(recipe);
-        byCategory.computeIfAbsent(category, k -> new RecipeStat()).add(id, nanos);
-        byCategoryAndSource.computeIfAbsent(category + "  <-  " + RecipeInspector.source(id), k -> new RecipeStat()).add(id, nanos);
+        byCategory.computeIfAbsent(category, k -> new RecipeStat()).add(id, nanos, setup, index);
+        byCategoryAndSource.computeIfAbsent(category + "  <-  " + RecipeInspector.source(id), k -> new RecipeStat())
+                .add(id, nanos, setup, index);
         if (slowest.size() < TOP_N || nanos > slowest.peek().nanos()) {
             slowest.add(new SlowRecipe(nanos, category, id, recipe));
             if (slowest.size() > TOP_N) {

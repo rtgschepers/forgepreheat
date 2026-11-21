@@ -30,8 +30,8 @@ import java.util.stream.Collectors;
  * The worker starts only once the server's tags have arrived (they follow the recipes that trigger JEI), so it never
  * reads tags while the main thread rebinds them. A synchronous JEI start always runs before those tags, so its fuel
  * list misses the tag-based fuels (logs, planks, ...): ~1,050 fuel stacks instead of ~4,070 in this pack.
- * Opt-in: every plugin's registration code runs off the main thread, which no mod is written to expect, and the fuel
- * list differs from a normal JEI start as described.
+ * On by default since 0.8.0 (the user's call after testing); switch off with -Dforgepreheat.asyncStart=false. Every
+ * plugin's registration code runs off the main thread, and the fuel list differs from a normal JEI start as described.
  */
 public final class AsyncJeiStart extends ScopedFeature {
     public static final AsyncJeiStart INSTANCE = new AsyncJeiStart();
@@ -57,7 +57,7 @@ public final class AsyncJeiStart extends ScopedFeature {
     private volatile String lastStartReason = "";
 
     private AsyncJeiStart() {
-        super("async JEI start", "asyncStart", false);
+        super("async JEI start", "asyncStart", true);
         String plugins = System.getProperty(FeatureToggle.property("asyncStartMainThreadPlugins"), "kubejs:jei");
         mainThreadPlugins = Arrays.stream(plugins.split(",")).map(String::trim).filter(s -> !s.isEmpty())
                 .collect(Collectors.toUnmodifiableSet());

@@ -1,5 +1,6 @@
 package forgepreheat.mixin;
 
+import forgepreheat.profile.RecipeIdDump;
 import forgepreheat.profile.RecipeTimings;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.library.recipes.RecipeManagerInternal;
@@ -24,5 +25,6 @@ public abstract class RecipeManagerInternalMixin {
     @Inject(method = "addRecipe", at = @At("RETURN"))
     private void forgepreheat$after(IRecipeCategory<?> category, Object recipe, Set<?> hidden, CallbackInfoReturnable<Boolean> cir) {
         RecipeTimings.INSTANCE.record(category.getRecipeType().getUid(), recipe, System.nanoTime() - forgepreheat$start);
+        RecipeIdDump.INSTANCE.record(category, recipe, cir.getReturnValue());
     }
 }
