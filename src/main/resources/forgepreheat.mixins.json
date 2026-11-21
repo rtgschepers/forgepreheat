@@ -6,8 +6,10 @@
   "refmap": "forgepreheat.refmap.json",
   "client": [
     "BlockableEventLoopMixin",
+    "CreativeModeInventoryScreenMixin",
     "IngredientFilterMixin",
     "IngredientSupplierHelperMixin",
+    "ItemStackListFactoryMixin",
     "JeiStarterMixin",
     "ObjectHolderRegistryMixin",
     "PluginCallerMixin",

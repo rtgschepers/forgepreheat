@@ -5,6 +5,7 @@ import forgepreheat.core.StartupScope;
 import forgepreheat.optimize.AsyncJeiStart;
 import forgepreheat.optimize.BackgroundSearchIndex;
 import forgepreheat.optimize.CreateExclusionIndex;
+import forgepreheat.optimize.FilterUpdateBatching;
 import forgepreheat.optimize.IngredientListCache;
 import forgepreheat.optimize.KubeJSHideLists;
 import forgepreheat.optimize.LazyRenderOnlyIndex;
@@ -29,6 +30,7 @@ public final class JeiStartSession {
             ParallelVanillaMakers.INSTANCE,
             LazyRenderOnlyIndex.INSTANCE,
             BackgroundSearchIndex.INSTANCE,
+            FilterUpdateBatching.INSTANCE,
             AsyncJeiStart.INSTANCE);
 
     private JeiStartSession() {}
