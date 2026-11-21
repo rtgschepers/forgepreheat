@@ -3,6 +3,7 @@ package forgepreheat.mixin;
 import forgepreheat.JeiStartSession;
 import forgepreheat.optimize.AsyncJeiStart;
 import forgepreheat.optimize.BackgroundSearchIndex;
+import forgepreheat.optimize.LazyRenderOnlyIndex;
 import mezz.jei.library.startup.JeiStarter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -33,5 +34,6 @@ public abstract class JeiStarterMixin {
             return;
         }
         BackgroundSearchIndex.INSTANCE.onJeiStopped();
+        LazyRenderOnlyIndex.INSTANCE.onJeiStopped();
     }
 }

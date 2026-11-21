@@ -7,6 +7,7 @@ import forgepreheat.optimize.BackgroundSearchIndex;
 import forgepreheat.optimize.CreateExclusionIndex;
 import forgepreheat.optimize.IngredientListCache;
 import forgepreheat.optimize.KubeJSHideLists;
+import forgepreheat.optimize.LazyRenderOnlyIndex;
 import forgepreheat.profile.ProfileReport;
 import forgepreheat.profile.RecipeIdDump;
 import forgepreheat.profile.RecipeTimings;
@@ -24,6 +25,7 @@ public final class JeiStartSession {
             IngredientListCache.INSTANCE,
             CreateExclusionIndex.INSTANCE,
             KubeJSHideLists.INSTANCE,
+            LazyRenderOnlyIndex.INSTANCE,
             BackgroundSearchIndex.INSTANCE,
             AsyncJeiStart.INSTANCE);
 

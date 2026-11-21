@@ -45,6 +45,17 @@ public final class ProfileReport {
         table(out, "Per category", timings.byCategory(), 60);
         table(out, "Per category and recipe source (namespace)", timings.byCategoryAndSource(), 80);
 
+        out.println("== Index time per ingredient role ==");
+        out.printf("%10s %14s %10s  %s%n", "index s", "entries", "calls", "role");
+        timings.byRole().forEach((role, s) -> out.printf("%10s %14d %10d  %s%n", secs(s[0]), s[1], s[2], role));
+        out.println();
+        out.println("== Render-only index time per category (top 30) ==");
+        timings.renderOnlyByCategory().entrySet().stream()
+                .sorted((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]))
+                .limit(30)
+                .forEach(e -> out.printf("%10s %8d  %s%n", secs(e.getValue()[0]), e.getValue()[1], e.getKey()));
+        out.println();
+
         out.println("== Slowest individual recipes ==");
         for (RecipeTimings.SlowRecipe s : timings.slowest()) {
             out.printf("%9.2f ms  %-40s %s%n", s.nanos() / 1e6, s.category(), s.id());
