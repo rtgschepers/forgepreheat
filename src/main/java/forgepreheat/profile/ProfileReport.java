@@ -50,6 +50,13 @@ public final class ProfileReport {
             out.printf("%9.2f ms  %-40s %s%n", s.nanos() / 1e6, s.category(), s.id());
             out.println("              " + RecipeInspector.describeInputs(s.recipe()));
         }
+        out.println();
+
+        // Every category, sorted by id, so two reports can be diffed to spot recipes that went missing.
+        out.println("== Recipe count per category (all) ==");
+        timings.byCategory().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> out.printf("%8d  %s%n", e.getValue().count(), e.getKey()));
     }
 
     private static void table(PrintWriter out, String title, Map<String, RecipeStat> rows, int limit) {

@@ -6,7 +6,10 @@
   "refmap": "forgepreheat.refmap.json",
   "client": [
     "AbstractContainerMenuMixin",
+    "GrindstoneRecipeMakerMixin",
+    "IngredientFilterMixin",
     "JeiStarterMixin",
+    "PluginCallerMixin",
     "RecipeManagerInternalMixin",
     "TypedIngredientMixin",
     "VanillaPluginMixin"

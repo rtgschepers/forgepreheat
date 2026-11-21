@@ -6,6 +6,12 @@
   "refmap": "forgepreheat.refmap.json",
   "client": [
     "CreateCategoryBuilderMixin",
+    "GTCEuMultiblockCategoryTimingMixin",
+    "GTCEuPatternPreviewTimingMixin",
+    "GTCEuRecipeCategoryTimingMixin",
+    "GTCEuRecipeTypeTimingMixin",
+    "GTCEuRecipeTypeUITimingMixin",
+    "GTCEuRecipeWidgetTimingMixin",
     "KubeJSHideEventMixin"
   ],
   "injectors": {
