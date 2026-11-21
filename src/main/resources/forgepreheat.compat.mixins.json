@@ -14,6 +14,7 @@
     "GTCEuRecipeTypeTimingMixin",
     "GTCEuRecipeTypeUITimingMixin",
     "GTCEuRecipeWidgetTimingMixin",
+    "JerLootTableHelperMixin",
     "KubeJSHideEventMixin",
     "PowahWikiMixin",
     "RegistrateOneTimeEventReceiverMixin",

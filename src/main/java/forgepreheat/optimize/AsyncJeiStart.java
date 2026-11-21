@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,6 +56,7 @@ public final class AsyncJeiStart extends ScopedFeature {
     private long workerStartedAt;
     private int pluginStepsOnMain;
     private int managedWaits;
+    private final Set<Thread> parkingThreads = ConcurrentHashMap.newKeySet();
     // Main thread only: a start request parked until the server's tags arrive.
     private volatile JeiStarter waitingForTags;
     private long tagWaitStartedAt;
@@ -98,6 +100,7 @@ public final class AsyncJeiStart extends ScopedFeature {
             tagWaitStartedAt = System.nanoTime();
         }
         waitingForTags = starter;
+        JerLootPrefetch.INSTANCE.start();
         return true;
     }
 
@@ -194,7 +197,16 @@ public final class AsyncJeiStart extends ScopedFeature {
      * the caller must return: on the worker, managedBlock would otherwise run the main thread's queued tasks itself.
      */
     public boolean waitWithoutDraining(Object loop, BooleanSupplier done) {
-        if (!onWorker() || loop != Minecraft.getInstance()) {
+        if (loop != Minecraft.getInstance()) {
+            return false;
+        }
+        if (parkingThreads.contains(Thread.currentThread())) {
+            while (!done.getAsBoolean()) {
+                LockSupport.parkNanos(1_000_000L);
+            }
+            return true;
+        }
+        if (!onWorker()) {
             return false;
         }
         managedWaits++;
@@ -244,6 +256,15 @@ public final class AsyncJeiStart extends ScopedFeature {
             }
         });
         done.join();
+    }
+
+    /** Our own background threads that wait on the main thread the same way the JEI worker does. */
+    void parkManagedWaits(Thread thread, boolean park) {
+        if (park) {
+            parkingThreads.add(thread);
+        } else {
+            parkingThreads.remove(thread);
+        }
     }
 
     private boolean onWorker() {

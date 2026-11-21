@@ -1,6 +1,7 @@
 package forgepreheat.mixin;
 
 import forgepreheat.optimize.AsyncJeiStart;
+import forgepreheat.profile.PluginStepTimings;
 import forgepreheat.ui.JeiStartProgress;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.library.load.PluginCaller;
@@ -33,6 +34,6 @@ public abstract class PluginCallerMixin {
 
     @ModifyVariable(method = TARGET, at = @At("HEAD"), argsOnly = true)
     private static Consumer<IModPlugin> forgepreheat$wrapPluginCalls(Consumer<IModPlugin> func) {
-        return AsyncJeiStart.INSTANCE.wrapPluginCalls(func);
+        return AsyncJeiStart.INSTANCE.wrapPluginCalls(PluginStepTimings.INSTANCE.wrap(func));
     }
 }

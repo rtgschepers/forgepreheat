@@ -11,6 +11,8 @@ import forgepreheat.optimize.KubeJSHideLists;
 import forgepreheat.optimize.LazyRenderOnlyIndex;
 import forgepreheat.optimize.ParallelRecipeIndex;
 import forgepreheat.optimize.ParallelVanillaMakers;
+import forgepreheat.profile.JeiStartSampler;
+import forgepreheat.profile.PluginStepTimings;
 import forgepreheat.profile.ProfileReport;
 import forgepreheat.profile.RecipeIdDump;
 import forgepreheat.profile.RecipeTimings;
@@ -26,6 +28,7 @@ public final class JeiStartSession {
             RecipeTimings.INSTANCE,
             RecipeIdDump.INSTANCE,
             StepTimings.INSTANCE,
+            PluginStepTimings.INSTANCE,
             IngredientListCache.INSTANCE,
             CreateExclusionIndex.INSTANCE,
             KubeJSHideLists.INSTANCE,
@@ -42,9 +45,11 @@ public final class JeiStartSession {
         StartupScope.setOwner(Thread.currentThread());
         FEATURES.forEach(Feature::begin);
         JeiStartProgress.INSTANCE.onBegin();
+        JeiStartSampler.INSTANCE.begin();
     }
 
     public static void end() {
+        JeiStartSampler.INSTANCE.end();
         // Summaries first: ending a feature clears the statistics they report.
         List<String> summaries = FEATURES.stream().map(Feature::summary).toList();
         if (RecipeTimings.INSTANCE.isEnabled()) {
