@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "forgepreheat.mixin.compat",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "forgepreheat.refmap.json",
+  "client": [
+    "CreateCategoryBuilderMixin",
+    "KubeJSHideEventMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
