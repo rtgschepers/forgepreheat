@@ -15,6 +15,7 @@
     "GTCEuRecipeTypeUITimingMixin",
     "GTCEuRecipeWidgetTimingMixin",
     "KubeJSHideEventMixin",
+    "PowahWikiMixin",
     "RegistrateOneTimeEventReceiverMixin",
     "UtilitiXCreativeTabMixin"
   ],
