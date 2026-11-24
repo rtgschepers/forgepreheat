@@ -9,6 +9,7 @@
     "ElementalCraftPureOreInjectorMixin",
     "ElementalCraftPureOreManagerMixin",
     "GTCEuMultiblockCategoryTimingMixin",
+    "GTCEuMultiblockPreviewMixin",
     "GTCEuPatternPreviewTimingMixin",
     "GTCEuRecipeCategoryTimingMixin",
     "GTCEuRecipeTypeTimingMixin",

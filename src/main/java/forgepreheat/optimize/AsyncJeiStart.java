@@ -19,9 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -190,6 +192,16 @@ public final class AsyncJeiStart extends ScopedFeature {
                 call.accept(plugin);
             }
         };
+    }
+
+    /** Runs plugin code that builds render-thread-only objects (LDLib scene widgets) on the main thread. */
+    public <T> T callOnMainThread(Supplier<T> call) {
+        if (!isActive() || !onWorker()) {
+            return call.get();
+        }
+        AtomicReference<T> result = new AtomicReference<>();
+        bridge.run(() -> result.set(call.get()));
+        return result.get();
     }
 
     /**
