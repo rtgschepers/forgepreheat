@@ -11,8 +11,8 @@ import java.util.List;
 
 /**
  * The addRecipe calls one JEI RecipeMap skipped during JEI's start, replayed in their original order so the map ends up
- * exactly as JEI would have built it. Every read of the map builds it first; the lock makes a read wait for a build that
- * is already running.
+ * exactly as JEI would have built it. Until JEI stops, every read of the map builds it first; the lock makes a read wait
+ * for a build that is already running.
  */
 public final class DeferredRecipeIndex {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -25,7 +25,7 @@ public final class DeferredRecipeIndex {
     private int next;
     private boolean compactRequested;
     private volatile boolean built;
-    private volatile boolean cancelled;
+    private volatile boolean abandoned;
     private volatile Thread replayer;
     private int failures;
 
@@ -53,16 +53,16 @@ public final class DeferredRecipeIndex {
 
     /** Called before every read of the map. */
     public void ensureBuilt() {
-        if (!built) {
+        if (!built && !abandoned) {
             LazyRenderOnlyIndex.INSTANCE.onReadBeforeBuilt();
-            build(false);
+            build();
         }
     }
 
     /** Called before an addRecipe that reaches the map directly, after the start; keeps the original order. */
     public void buildBeforeDirectAdd() {
         if (!built) {
-            build(false);
+            build();
         }
     }
 
@@ -74,20 +74,29 @@ public final class DeferredRecipeIndex {
         return built;
     }
 
-    void cancel() {
-        cancelled = true;
+    /**
+     * JEI stopped, so this map belongs to a discarded runtime; mods that keep that runtime would otherwise pin the pending
+     * calls (1.2 GB in this pack). A read after this sees the map as far as it was replayed.
+     */
+    void abandon() {
+        abandoned = true; // Set before the lock, so a running build leaves it after its current entry.
+        synchronized (this) {
+            if (!built) {
+                pending = null;
+            }
+        }
     }
 
-    /** Replays the remaining calls; a background build stops early when JEI stops, a read resumes it. */
+    /** Replays the remaining calls; stops early when JEI stops. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    synchronized void build(boolean background) {
-        if (built) {
+    synchronized void build() {
+        if (built || abandoned) {
             return;
         }
         replayer = Thread.currentThread();
         try {
             while (next < pending.size()) {
-                if (background && cancelled) {
+                if (abandoned) {
                     return;
                 }
                 Pending p = pending.get(next++);

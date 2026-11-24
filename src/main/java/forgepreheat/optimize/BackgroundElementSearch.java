@@ -43,7 +43,7 @@ final class BackgroundElementSearch implements IElementSearch {
     private final IIngredientManager manager;
     private final CompletableFuture<ElementSearch> worker;
     // Same keys, values and insertion order as ElementSearch.allElements, so iteration order matches too.
-    private final Map<Object, IListElement<?>> allElements = new HashMap<>();
+    private Map<Object, IListElement<?>> allElements = new HashMap<>();
     private final List<IListElementInfo<?>> addedMeanwhile = new ArrayList<>();
     private ElementPrefixParser parser;
     private List<IListElementInfo<?>> initial;
@@ -99,6 +99,7 @@ final class BackgroundElementSearch implements IElementSearch {
 
     @Override
     public <T> void add(IListElementInfo<T> info, IIngredientManager ingredientManager) {
+        adoptIfBuilt();
         if (ready != null) {
             ready.add(info, ingredientManager);
             return;
@@ -109,6 +110,7 @@ final class BackgroundElementSearch implements IElementSearch {
 
     @Override
     public Collection<IListElement<?>> getAllIngredients() {
+        adoptIfBuilt();
         return ready != null ? ready.getAllIngredients() : Collections.unmodifiableCollection(allElements.values());
     }
 
@@ -120,6 +122,7 @@ final class BackgroundElementSearch implements IElementSearch {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Optional<IListElement<T>> findElement(ITypedIngredient<T> typedIngredient, IIngredientHelper<T> helper) {
+        adoptIfBuilt();
         if (ready != null) {
             return ready.findElement(typedIngredient, helper);
         }
@@ -146,8 +149,16 @@ final class BackgroundElementSearch implements IElementSearch {
             addedMeanwhile.clear();
             parser = null;
             initial = null;
+            allElements = null;
         }
         return ready;
+    }
+
+    // Switching as soon as the worker is done frees the uid map and copies above, which duplicate JEI's index (~15 MB).
+    private void adoptIfBuilt() {
+        if (ready == null && worker.isDone() && !worker.isCompletedExceptionally()) {
+            index();
+        }
     }
 
     private ElementSearch awaitWorker() {

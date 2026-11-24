@@ -71,11 +71,12 @@ public final class LazyRenderOnlyIndex extends ScopedFeature {
         earlyReads.incrementAndGet();
     }
 
-    /** JEI stopped, so a background build of the old runtime's index is wasted work. */
+    /** JEI stopped: the old runtime's index is no longer needed, so its build stops and its pending calls are dropped. */
     public void onJeiStopped() {
         DeferredRecipeIndex index = current;
+        current = null;
         if (index != null) {
-            index.cancel();
+            index.abandon();
         }
     }
 
@@ -83,7 +84,7 @@ public final class LazyRenderOnlyIndex extends ScopedFeature {
         long start = System.nanoTime();
         int entries = index.size();
         try {
-            index.build(true);
+            index.build();
         } catch (RuntimeException | LinkageError e) {
             LOGGER.error("[ForgePreheat] Background render-only index build failed; lookups will retry it", e);
             return;

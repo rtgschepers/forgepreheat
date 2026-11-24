@@ -26,13 +26,18 @@ public final class ParallelRecipeIndex extends ScopedFeature {
         super("parallel recipe index", "parallelRecipeIndex", true);
     }
 
+    // A start that threw never reached onEnd; closing its leftovers here ends their threads instead of leaking them.
     @Override
     protected void onBegin() {
-        indexes.clear();
+        closeAll();
     }
 
     @Override
     protected void onEnd() {
+        closeAll();
+    }
+
+    private void closeAll() {
         synchronized (indexes) {
             indexes.forEach(PipelinedRecipeIndex::close);
             indexes.clear();

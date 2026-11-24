@@ -230,6 +230,40 @@ changes no behavior, only keeps them in memory.
 - FastBoot: Modrinth page gone. DashLoader: content cache (other loader). EMI: JEI alternative, reloads in the background
   by design (EMI Accelerator adds caching): a pack-level change, not ours.
 
+## Memory (checked 2026-11-24, 0.10.6, Mac pack)
+
+Static review of every stateful class: one real leak, two retentions, none growing per normal join.
+- Leak: a `JeiStarter.start` that throws never reaches `JeiStartSession.end()`; `ParallelRecipeIndex.onBegin` then
+  drops its index threads without closing them, so each failed start leaves 3 parked threads holding their `RecipeMap`s.
+- `LazyRenderOnlyIndex.current` keeps the last render-only `RecipeMap` (~35M entries) after JEI stops, until the next start.
+- `BackgroundElementSearch` keeps its 70k-entry uid map (and `initial`/`parser` until the first search) for the runtime's life.
+
+Heap baseline (`jcmd GC.class_histogram`, live objects after a full GC): title screen 2,066 MB; in world with JEI loaded
+3,798 MB; main menu after two joins 4,331 / 4,334 MB (4 s and 26 s after logout). In that menu a whole JEI runtime is
+still alive (1 `JeiRuntime`, 1 `RecipeManagerInternal`, 4 `RecipeMap`, 1 `IngredientFilter`, 1 `ElementSearch`, 72,917
+`ListElementInfo`), plus 2 `ClientLevel`, 2 `LocalPlayer`, 2 `ClientPacketListener` (0 chunks). JEI's own `stop` clears
+its runtime, and none of our fields reaches `JeiRuntime` or `IngredientFilter`, so another holder (likely a plugin keeping
+the runtime from `onRuntimeAvailable`) is suspected but not confirmed. A rejoin 8 s after logout had both runtimes alive
+during the second start: 5,985 MB. Only one valid menu snapshot after a logout exists, so growth per join is not known yet.
+
+Second run (three joins; the third logged out before JEI finished), menu 30 s after each logout: 3,627 / 4,340 /
+6,610 MB; title 1,588 MB. `ClientLevel`, `LocalPlayer` and `ClientPacketListener` go 1 / 2 / 3. Heap dump of the third
+menu, read with Eclipse MAT headless (MAT 1.17 needs Java 21: run its equinox launcher jar with the CurseForge Jre_21,
+`-application org.eclipse.mat.api.parse <dump> "-command=path2gc 0x..." -format=txt -unzip org.eclipse.mat.api:query`;
+the GUI-bundle errors it logs are harmless). Holders, each a static "last one seen", so no unbounded growth:
+- Old JEI recipe manager (730 MB retained): PneumaticCraft `JEIPlugin.recipeManager`; old `JeiRuntime`: `neiaddon.JeiBookmarks.seenRuntime`.
+- Cancelled start's `RecipeManagerInternal` (92 MB): EvilCraft Compat `JEIEvilCraftConfig.SPIRIT_FURNACE_RECIPES_REGISTRAR` (lambda over the `RecipeRegistration`).
+- Old worlds and connections (210 / 179 / 8 MB, mostly each connection's recipes): Cooking for Blockheads
+  `CowJarRenderer.entity` (a cow of world 1), Jade `ObjectDataCenter.accessor` (world 2), Euphoria Patches
+  `DimensionShaderRefresh.lastLevel` (world 3).
+- Ours: the cancelled start's `DeferredRecipeIndex` keeps its pending entries, **1.20 GB** retained only by it (reachable
+  through `LazyRenderOnlyIndex.current` and through the stale `RecipeMap`'s `forgepreheat$deferred`, which EvilCraft keeps
+  alive), so nulling `current` alone doesn't free it: the pending list itself must be dropped on stop. The same list holds
+  ~1.2 GB in every start until the background build replays it (the built map is 153 MB): a transient peak, by design.
+  `BackgroundElementSearch` of the kept runtime: `allElements` 6.7 MB and `initial` 7.9 MB duplicate JEI's index (no
+  search was made, so `ready` was never set). `PipelinedRecipeIndex`, `IngredientListCache`, `RecipeTimings`, pure-ore
+  candidates: < 0.6 MB each.
+
 ## Version history
 
 | Version | Change | Measured |
@@ -269,6 +303,7 @@ changes no behavior, only keeps them in memory.
 | 0.10.4 | `JerLootPrefetch` (`jerLootPrefetch`): `AsyncJeiStart.dispatch` starts a daemon thread that calls JER's own `getLootDataManager()` (reflection) during the wait for the server's tags; `JerLootTableHelperMixin` (compat, HEAD) makes JER's call wait for it (main thread waits with `managedBlock`, others join); on failure JER's `lootDataManager` field is reset to null so JER loads it itself. The prefetch thread is registered with `AsyncJeiStart.parkManagedWaits`, so its `managedBlock` parks instead of draining the main queue | tested 2026-11-21: prefetch took 7.85 s in the background (contended with the join), finished before JER asked (no wait); JER categories 5.9 -> 0.97 s, Registering categories 7.2 -> 3.9 s, JEI start 55.8 -> 53.6 s; all counts identical incl. every jeresources category; 0 plugin errors (the JER cartographer warning is the known one) |
 | 0.10.5 | Code review fixes. `PipelinedRecipeIndex`: the consumer thread used to exit on an interrupt or an uncaught `Error`, leaving entries queued so compact and every later read would wait forever; it now keeps waiting on interrupts and logs and counts any `Throwable` per entry. `RecipeMapMixin`/`DeferredRecipeIndex`: a direct `addRecipe` on the render-only map after the start (a runtime recipe add) raced the background replay on the same map; it now finishes the replay first (`buildBeforeDirectAdd`). `mod_description` rewritten (it still described 0.4). Known, not fixed: when `JeiStarter.start` throws, `JeiStartSession.end()` never runs (no RETURN), so the scope owner and index threads stay until the next start | tested 2026-11-21: JEI start 53.6 s, counts identical, 0 index failures, 0 plugin errors, 0 injection errors; JER prefetch 7.6 s in the background. Title screen 84.4 s that launch (vs ~70 s before; no startup code changed, so likely disk/cache variance) |
 | 0.10.6 | Fix (reported 2026-11-24): GTCEu multiblock previews in JEI were empty since async start (0.8.0). LDLib's `LDLib.isRemote()` is `isClient() && Minecraft.isSameThread()`, so a `SceneWidget` built on the JEI worker skips `createScene` (no renderer) and `setRenderedCore`. `GTCEuMultiblockPreviewMixin` (compat) redirects the `Stream.toList()` in `MultiblockInfoCategory.registerRecipes` (the lazy stream builds every `MultiblockInfoWrapper` there) to `AsyncJeiStart.callOnMainThread`, a `MainThreadBridge` hop; expected main-thread cost ~1.3 s (0.5.1: multiblock step 1.31 s). The 0.7.1 "multiblock" check likely saw the page, not the 3D view. JEI now comes from the BlameJared maven instead of the pack folder | tested 2026-11-24 on the Mac pack (JEI start ~30 s there vs ~54 s on Windows), baseline 0.10.5 `logs/forgepreheat-jei-20261124-103327.txt` (previews empty, user reproduced) vs `logs/forgepreheat-jei-20261124-103636.txt`: previews render (user checked); main thread 1.55 s / 17 tasks -> 2.38 s / 18 tasks, seen as one 933 ms frame in the inventory (sampler: 98% `PatternPreviewWidget.getPatternWidget` in our hop); 158 previews in 0.91 s; JEI start 31.8 -> 29.4 s (noise); 624 categories and 576,788 recipes, every count identical; 0 plugin errors, 0 injection errors, 0 crashed layouts |
+| 0.10.7 | Memory fixes from the MAT review (see Memory). `DeferredRecipeIndex.abandon()` on JEI stop (`LazyRenderOnlyIndex.onJeiStopped`, which also clears `current`): drops the pending calls and stops a running replay after its current entry; reads after that see the map as far as it was replayed. `BackgroundElementSearch` switches to the built `ElementSearch` on any call once the worker is done, freeing its uid map and copies. `ParallelRecipeIndex` closes leftover index threads in `onBegin` too (a start that threw never reached `onEnd`) | tested 2026-11-24 with the 0.10.8 join loop (three joins, the third logged out 15 s into JEI's start): menu after each logout 3,602 / 4,270 / 5,167 MB vs 3,627 / 4,340 / 6,610 MB on 0.10.6, 0 `DeferredRecipeIndex$Pending` in the last menu (529,708 before); the cancelled start logged "Background render-only index build stopped because JEI stopped"; JEI start 38.8 / 41.1 s, 0 plugin errors, 0 injection errors, 0 failed deferred entries. One `Found a broken recipe` per start (Apotheosis `socketing` smithing recipe, IndexOutOfBounds): in logs from 2026-11-18 on as well, not ours |
 
 ## Where to pick up
 
