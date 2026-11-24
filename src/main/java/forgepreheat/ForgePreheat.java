@@ -1,6 +1,7 @@
 package forgepreheat;
 
 import forgepreheat.profile.HitchSampler;
+import forgepreheat.profile.JoinLoop;
 import forgepreheat.ui.JeiLoadingNotice;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
@@ -16,6 +17,7 @@ public final class ForgePreheat {
             ClientStartSession.begin();
             HitchSampler.install();
             JeiLoadingNotice.install();
+            JoinLoop.install();
         }
     }
 }

@@ -20,6 +20,7 @@ import forgepreheat.profile.StepTimings;
 import forgepreheat.ui.JeiStartProgress;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Composition root: the one place that knows every feature. New features are registered here and nowhere else. */
 public final class JeiStartSession {
@@ -39,7 +40,14 @@ public final class JeiStartSession {
             FilterUpdateBatching.INSTANCE,
             AsyncJeiStart.INSTANCE);
 
+    private static final AtomicInteger endedStarts = new AtomicInteger();
+
     private JeiStartSession() {}
+
+    /** Number of JEI starts that have returned, cancelled ones included. */
+    public static int endedStarts() {
+        return endedStarts.get();
+    }
 
     public static void begin() {
         StartupScope.setOwner(Thread.currentThread());
@@ -58,5 +66,6 @@ public final class JeiStartSession {
         FEATURES.forEach(Feature::end);
         JeiStartProgress.INSTANCE.onEnd(!AsyncJeiStart.INSTANCE.isCancelled());
         StartupScope.setOwner(null);
+        endedStarts.incrementAndGet();
     }
 }

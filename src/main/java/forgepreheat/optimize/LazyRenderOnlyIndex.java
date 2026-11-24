@@ -67,6 +67,12 @@ public final class LazyRenderOnlyIndex extends ScopedFeature {
         return index;
     }
 
+    /** True while the last start's index still waits for its background build. */
+    public boolean isBackgroundBuildPending() {
+        DeferredRecipeIndex index = current;
+        return background && index != null && !index.isBuilt();
+    }
+
     void onReadBeforeBuilt() {
         earlyReads.incrementAndGet();
     }
