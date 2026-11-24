@@ -42,7 +42,7 @@ up JEI's indexing is a requirement**, to be done after the client-startup work.
 | Pack instance | `C:\Users\Rick\curseforge\minecraft\Instances\All the Mods 9 Expert` |
 | JDK for builds | `C:\Program Files\Eclipse Adoptium\jdk-17.0.21.10002-hotspot` (Temurin 17) |
 | `jfr` tool | `C:\Users\Rick\curseforge\minecraft\Install\java\Jre_21\bin\jfr.exe` |
-| Versions compiled against | Forge 47.4.10, JEI 15.59.0.210 (local jar), Create 6.0.8, KubeJS 2001.6.5-build.26 |
+| Versions compiled against | Forge 47.4.10, JEI 15.59.0.210 (BlameJared maven), Create 6.0.8, KubeJS 2001.6.5-build.26 |
 | Server | modded, ~15 ms ping; network and MTU were checked and are fine |
 
 ## Build, install, verify
@@ -55,8 +55,9 @@ export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.21.10002-hotspot"
 
 - Install: copy the jar into the instance's `mods` folder and remove the previous `forgepreheat-*.jar`
   (two jars with the same mod id stop Forge). Only do this while `javaw.exe` is not running.
-- JEI is compiled against `pack_mods_dir` in `gradle.properties` via `flatDir` + `fg.deobf`. If the pack updates JEI,
-  update `jei_version` and re-check every mixin target signature.
+- JEI is compiled against `mezz.jei:jei-1.20.1-forge:<jei_version>` from `maven.blamejared.com` via `fg.deobf` (the
+  full jar, since the mixins target JEI internals; 15.59.0.210 there is byte-identical to the pack's jar). If the pack
+  updates JEI, update `jei_version` and re-check every mixin target signature.
 - After every build, verify before installing:
   - `forgepreheat.refmap.json` maps every Minecraft-class mixin target (or `@At(..., remap = true)` target) to its SRG
     name. Since 0.8.0 no mixin targets Minecraft, so the refmap is empty; check it again when one is added.
